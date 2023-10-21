@@ -33,7 +33,7 @@
   }
 
   function connect() {
-    connection = new WebSocket("ws://localhost:3000/ws?test");
+    connection = new WebSocket(import.meta.env.VITE_SERVER_API);
 
     connection.onopen = () => {
       loading = false;
@@ -85,7 +85,14 @@
 
 <style>
   #canvas {
-    background-color: green;
+    background: #c33764; /* fallback for old browsers */
+    background: -webkit-linear-gradient(
+      to right,
+      #c33764,
+      #1d2671
+    ); /* Chrome 10-25, Safari 5.1-6 */
+    background: linear-gradient(to right, #c33764, #1d2671);
+    background: linear-gradient(to right, #283c86, #45a247);
     height: 100vh;
     position: relative;
   }
