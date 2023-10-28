@@ -2,91 +2,82 @@
   import { onMount } from "svelte";
   import { debounce } from "ts-debounce";
   import "../app.css";
+  import type { Keys, ServerState, User as UserType } from "../types";
+  import User from "@src/components/User.svelte";
+  import Cursor from "@src/components/Cursor.svelte";
+  import Entity from "@src/components/Entity.svelte";
+  import { throttle } from "@martinstark/throttle-ts";
+  import Image from "../lib/DSC04211.gif";
 
-  type keys = {
-    up: boolean;
-    down: boolean;
-    left: boolean;
-    right: boolean;
-  };
-
-  type Coordinates = {
-    x: number;
-    y: number;
-  };
-
-  type User = {
-    id: string;
-    coordinates: Coordinates;
-    mouseCoordinates: Coordinates;
-    color: string;
-  };
-
-  type Entity = {
-    id: string;
-    coordinates: Coordinates;
-    color: string;
-  };
-
-  type ServerState = {
-    users: User[];
-    entities: Entity[];
-  };
-
-  type LocalState = {
-    mouseCoordinates: Coordinates;
-    keys: keys;
-  };
-
+  //connection
   let connection: WebSocket | null;
-
   let loading = true;
 
-  let serverState: ServerState | null = null;
+  //server state
+  let me: ServerState["me"] | null = null;
+  let users: ServerState["users"] | null = null;
+  let entities: ServerState["entities"] | null = null;
+  let environment: ServerState["environment"] | null = null;
 
-  let localState: LocalState = {
-    mouseCoordinates: {
-      x: 0,
-      y: 0,
-    },
-    keys: {
-      up: false,
-      down: false,
-      left: false,
-      right: false,
-    },
+  // local state
+  let mouseCoordinates = {
+    x: 0,
+    y: 0,
   };
 
-  function handleMousemove(event: MouseEvent) {
-    localState.mouseCoordinates.x = event.clientX;
-    localState.mouseCoordinates.y = event.clientY;
-  }
+  let keys = {
+    up: false,
+    down: false,
+    left: false,
+    right: false,
+  };
+
+  //elements
+  let viewport: HTMLDivElement;
+  let canvas: HTMLDivElement;
+
+  const [handleMouseMove] = throttle((event: MouseEvent) => {
+    console.log("mouse move!");
+    mouseCoordinates = {
+      x: event.clientX + viewport.scrollLeft,
+      y: event.clientY + viewport.scrollTop,
+    };
+  }, 50);
 
   function handleKeyPress(event: KeyboardEvent, pressed: boolean) {
     if (event.key === "w" || event.key === "W" || event.key === "ArrowUp") {
-      localState.keys.up = pressed;
+      if (keys.up !== pressed) {
+        keys.up = pressed;
+      }
     } else if (
       event.key === "s" ||
       event.key === "S" ||
       event.key === "ArrowDown"
     ) {
-      localState.keys.down = pressed;
+      if (keys.down !== pressed) {
+        keys.down = pressed;
+      }
     } else if (
       event.key === "a" ||
       event.key === "A" ||
       event.key === "ArrowLeft"
     ) {
-      localState.keys.left = pressed;
+      if (keys.left !== pressed) {
+        keys.left = pressed;
+      }
     } else if (
       event.key === "d" ||
       event.key === "D" ||
       event.key === "ArrowRight"
     ) {
-      localState.keys.right = pressed;
+      if (keys.right !== pressed) {
+        keys.right = pressed;
+      }
     }
   }
 
   function handleMouseClick() {
+    //viewport.scrollTo(1920, 1920);
     console.log("shoot!");
     if (connection?.readyState === WebSocket.OPEN) {
       connection.send(
@@ -97,19 +88,21 @@
     }
   }
 
-  $: direction = () => {
+  function handleScrollViewport() {}
+
+  function getDirection(keys: Keys) {
     let vertical: string | null = null;
     let horizontal: string | null = null;
 
-    if (localState.keys.up && !localState.keys.down) {
+    if (keys.up && !keys.down) {
       vertical = "up";
-    } else if (localState.keys.down && !localState.keys.up) {
+    } else if (keys.down && !keys.up) {
       vertical = "down";
     }
 
-    if (localState.keys.left && !localState.keys.right) {
+    if (keys.left && !keys.right) {
       horizontal = "left";
-    } else if (localState.keys.right && !localState.keys.left) {
+    } else if (keys.right && !keys.left) {
       horizontal = "right";
     }
 
@@ -124,22 +117,6 @@
     } else {
       return "none";
     }
-  };
-
-  function startClock() {
-    const interval = setInterval(() => {
-      if (connection?.readyState === WebSocket.OPEN) {
-        connection.send(
-          JSON.stringify({
-            type: "move",
-            direction: direction(),
-            mouseCoordinates: localState.mouseCoordinates,
-          })
-        );
-      } else {
-        clearInterval(interval);
-      }
-    }, 60);
   }
 
   function connect() {
@@ -148,11 +125,15 @@
     connection.onopen = () => {
       loading = false;
 
-      startClock();
+      //startClock();
     };
 
     connection.onmessage = (message) => {
-      serverState = JSON.parse(message.data);
+      const packet: ServerState = JSON.parse(message.data);
+      me = packet.me;
+      users = packet.users;
+      entities = packet.entities;
+      environment = packet.environment;
     };
 
     connection.onclose = async () => {
@@ -162,6 +143,81 @@
       console.log("connecting!");
       connect();
     };
+  }
+
+  //send inputs
+  $: {
+    if (connection?.readyState === 1) {
+      console.log("keyboard press!");
+      connection.send(
+        JSON.stringify({
+          type: "move",
+          direction: getDirection(keys),
+        })
+      );
+    }
+  }
+  $: {
+    if (connection?.readyState === 1) {
+      console.log("mouse move!");
+      connection?.send(
+        JSON.stringify({
+          type: "mousemove",
+          coordinates: mouseCoordinates,
+        })
+      );
+    }
+  }
+
+  function handleViewportScroll(me: UserType, viewport: HTMLDivElement) {
+    if (
+      me?.coordinates.y >
+      viewport.offsetHeight + viewport.scrollTop - viewport.offsetHeight / 3
+    ) {
+      viewport.scrollBy({
+        top:
+          me.coordinates.y -
+          (viewport.offsetHeight +
+            viewport.scrollTop -
+            viewport.offsetHeight / 3),
+        behavior: "smooth",
+      });
+    }
+
+    if (me?.coordinates.y < viewport.scrollTop + viewport.offsetHeight / 3) {
+      viewport.scrollBy({
+        top:
+          me.coordinates.y - (viewport.scrollTop + viewport.offsetHeight / 3),
+        behavior: "smooth",
+      });
+    }
+
+    if (
+      me?.coordinates.x >
+      viewport.offsetWidth + viewport.scrollLeft - viewport.offsetWidth / 3
+    ) {
+      viewport.scrollBy({
+        left:
+          me.coordinates.x -
+          (viewport.offsetWidth +
+            viewport.scrollLeft -
+            viewport.offsetWidth / 3),
+        behavior: "smooth",
+      });
+    }
+
+    if (me?.coordinates.x < viewport.scrollLeft + viewport.offsetWidth / 3) {
+      viewport.scrollBy({
+        left:
+          me.coordinates.x - (viewport.scrollLeft + viewport.offsetWidth / 3),
+        behavior: "smooth",
+      });
+    }
+  }
+  $: {
+    if (me && viewport) {
+      handleViewportScroll(me, viewport);
+    }
   }
 
   onMount(async () => {
@@ -177,75 +233,41 @@
 
 {#if loading}
   <p>connecting...</p>
-{:else}
+{:else if me && users && entities && environment}
   <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div id="canvas" on:mousemove={handleMousemove}>
-    {#if serverState}
-      {#each serverState.users as user (user.id)}
-        <div
-          class="player"
-          style={`top:${user.coordinates.y}px; left: ${user.coordinates.x}px; background-color:${user.color};`}
-        />
-
-        <!--<div
-          class="cursor"
-          style={`top:${user.mouseCoordinates.y}px; left: ${user.mouseCoordinates.x}px; background-color:${user.color};`}
-        />-->
+  <div id="viewport" bind:this={viewport}>
+    <div
+      id="canvas"
+      on:mousemove={handleMouseMove}
+      style={`width:${environment?.width}px; height:${environment?.height}px; background-image:url(${Image})`}
+      bind:this={canvas}
+    >
+      <User data={me} />
+      <Cursor data={me} />
+      {#each users as user (user.id)}
+        <User data={user} />
       {:else}
         <p>no users</p>
       {/each}
-      {#each serverState.entities as entity (entity.id)}
-        <div
-          class="entity"
-          style={`top:${entity.coordinates.y}px; left: ${entity.coordinates.x}px; background-color:${entity.color};`}
-        />
+      {#each entities as entity (entity.id)}
+        <Entity data={entity} />
       {/each}
-    {/if}
+    </div>
   </div>
+{:else}
+  <p>waiting for server data</p>
 {/if}
 
 <style>
-  #canvas {
-    background-color: #fa8bff;
-    background-image: linear-gradient(
-      45deg,
-      #fa8bff 0%,
-      #2bd2ff 52%,
-      #2bff88 90%
-    );
-
+  #viewport {
+    width: 100vw;
     height: 100vh;
-    position: relative;
     overflow: hidden;
   }
+  #canvas {
+    background-size: cover;
 
-  .player {
-    position: absolute;
-    width: 20px;
-    height: 20px;
-    border-radius: 5px;
-    transition-property: top left;
-    transition-duration: 100ms;
-    transition-delay: 0s;
-  }
-
-  .cursor {
-    position: absolute;
-    width: 10px;
-    height: 10px;
-    border-radius: 5px;
-    transition-property: top left;
-    transition-duration: 100ms;
-    transition-delay: 0s;
-  }
-
-  .entity {
-    position: absolute;
-    width: 15px;
-    height: 15px;
-    border-radius: 5px;
-    transition-property: top left;
-    transition-duration: 100ms;
-    transition-delay: 0s;
+    overflow: hidden;
+    position: relative;
   }
 </style>
