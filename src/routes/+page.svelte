@@ -6,7 +6,7 @@
   import User from "@src/components/User.svelte";
   import Cursor from "@src/components/Cursor.svelte";
   import Entity from "@src/components/Entity.svelte";
-  import { throttle } from "@martinstark/throttle-ts";
+  import throttleTs from "@martinstark/throttle-ts";
   import Image from "../lib/DSC04211.gif";
 
   //connection
@@ -36,7 +36,7 @@
   let viewport: HTMLDivElement;
   let canvas: HTMLDivElement;
 
-  const [handleMouseMove] = throttle((event: MouseEvent) => {
+  const [handleMouseMove] = throttleTs.throttle((event: MouseEvent) => {
     console.log("mouse move!");
     mouseCoordinates = {
       x: event.clientX + viewport.scrollLeft,
